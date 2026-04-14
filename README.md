@@ -91,19 +91,18 @@ snforge test
 
 ### Deploy the contract
 
-1. You'll need to declare 3 contracts `LPToken`, `Pool` and `Market` to get their class hashes following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/declare.html
+1. Following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/declare.html, you'll need to declare 3 contracts `LPToken`, `Pool` and `Market` to get their class hashes:
 
 ```bash
 sncast --account my_account declare --network sepolia --contract-name MyContract
 ```
 
-2. You'll deploy the `Market` contract using these parameters:
+2. Following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/deploy.html, you'll deploy the `Market` contract using these parameters:
 - Admin wallet address
 - `Pool` contract class hash deployed at step 1
 - `LPToken` contract class hash deployed at step 1
 - List of initial token addresses configured for price feed
 - List of price feed addresses corresponds to the token addresses above
-following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/deploy.html
 
 ```bash
 sncast --account my_account deploy --class-hash <market_class_hash> --arguments '<owner>, <pool_class_hash>, <lp_token_class_hash>, array![<first_token_address>, <second_token_address>, <third_token_address>].span(), array![<first_price_feed_address>, <second_price_feed_address>, <third_price_feed_address>].span()' --network sepolia
