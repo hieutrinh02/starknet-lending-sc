@@ -15,7 +15,7 @@ use starknet::{
 };
 
 // Internal imports
-use starknet_lending::{
+use starknet_lending_sc::{
     constants::{
         BASE_INTEREST_RATE, BORROW_LIMIT, OPTIMAL_UTILIZATION_RATE, RSLOPE_1, RSLOPE_2,
         THRESHOLD_LIQUIDATION, YEAR_TIMESTAMPS, ten_pow_decimals,
@@ -27,7 +27,11 @@ use starknet_lending::{
     },
     lp_token::LPToken,
     market::{
-        Market, Market::{Borrowed, Event, Liquidated, NewPoolDeployed, Repaid, Supplied, Withdrew},
+        Market,
+        Market::{
+            Borrowed, Event, Liquidated, NewPoolDeployed, PriceFeedUpdated, Repaid, Supplied,
+            Withdrew,
+        },
     },
     pool::Pool,
 };
@@ -53,11 +57,11 @@ pub fn deploy_contract() -> (
     ContractAddress,
 ) {
     // Declare contract
-    let pool_contract = declare("Pool").unwrap().contract_class();
-    let lp_token_contract = declare("LPToken").unwrap().contract_class();
-    let mock_erc20_token_contract = declare("MockERC20").unwrap().contract_class();
-    let mock_aggregator_contract = declare("MockAggregator").unwrap().contract_class();
-    let market_contract = declare("Market").unwrap().contract_class();
+    let pool_contract = declare("Pool").unwrap_syscall().contract_class();
+    let lp_token_contract = declare("LPToken").unwrap_syscall().contract_class();
+    let mock_erc20_token_contract = declare("MockERC20").unwrap_syscall().contract_class();
+    let mock_aggregator_contract = declare("MockAggregator").unwrap_syscall().contract_class();
+    let market_contract = declare("Market").unwrap_syscall().contract_class();
 
     // Prepare pool deploy data
     let mock_erc20_token_name: ByteArray = mock_erc20_token_name();
@@ -72,18 +76,20 @@ pub fn deploy_contract() -> (
     Serde::serialize(
         @mock_erc20_collateral_token_name, ref mock_erc20_collateral_token_deploy_data,
     );
-    let (_token, _) = mock_erc20_token_contract.deploy(@mock_erc20_token_deploy_data).unwrap();
+    let (_token, _) = mock_erc20_token_contract
+        .deploy(@mock_erc20_token_deploy_data)
+        .unwrap_syscall();
     let (_collateral_token, _) = mock_erc20_token_contract
         .deploy(@mock_erc20_collateral_token_deploy_data)
-        .unwrap();
+        .unwrap_syscall();
     let mut mock_aggregator_deploy_data: Array<felt252> = array![];
     Serde::serialize(@MOCK_AGGREGATOR_DECIMALS, ref mock_aggregator_deploy_data);
     let (_mock_token_aggregator, _) = mock_aggregator_contract
         .deploy(@mock_aggregator_deploy_data)
-        .unwrap();
+        .unwrap_syscall();
     let (_mock_collateral_token_aggregator, _) = mock_aggregator_contract
         .deploy(@mock_aggregator_deploy_data)
-        .unwrap();
+        .unwrap_syscall();
     let _pool_contract_class_hash: ClassHash = *pool_contract.class_hash;
     let _lp_token_class_hash: ClassHash = *lp_token_contract.class_hash;
     let mut market_deploy_data = array![];
@@ -97,7 +103,7 @@ pub fn deploy_contract() -> (
     );
 
     // Deploy contract
-    let (market_contract_address, _) = market_contract.deploy(@market_deploy_data).unwrap();
+    let (market_contract_address, _) = market_contract.deploy(@market_deploy_data).unwrap_syscall();
 
     // Return
     (
@@ -358,6 +364,89 @@ fn test_deploy_new_pool_revert_pool_already_existed() {
         Result::Ok(_) => panic_with_felt252('Should have panicked'),
         Result::Err(panic_data) => {
             assert(*panic_data.at(0) == Error::POOL_ALREADY_EXISTED, *panic_data.at(0))
+        },
+    }
+    stop_cheat_caller_address(market_contract_address);
+}
+
+#[test]
+fn test_update_price_feed_address() {
+    // Setup
+    let (market_contract_address, _, _, token_contract_address, _, _, _) = deploy_contract();
+    let market_dispatcher = IMarketDispatcher { contract_address: market_contract_address };
+
+    // Interact
+    let mut spy = spy_events();
+    start_cheat_caller_address(market_contract_address, TEST_OWNER);
+    market_dispatcher
+        .update_price_feed_address(token_contract_address, contract_address_const::<0>());
+    stop_cheat_caller_address(market_contract_address);
+
+    // Assert
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    market_contract_address,
+                    Event::PriceFeedUpdated(
+                        PriceFeedUpdated {
+                            token: token_contract_address,
+                            feed_address: contract_address_const::<0>(),
+                        },
+                    ),
+                ),
+            ],
+        );
+    interact_with_state(
+        market_contract_address,
+        || {
+            let mut state = Market::contract_state_for_testing();
+            let feed_address = state
+                .chainlink_price_feed_address
+                .entry(token_contract_address)
+                .read();
+            assert(feed_address == contract_address_const::<0>(), 'Invalid address');
+        },
+    );
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_update_price_feed_address_revert_not_owner() {
+    // Setup
+    let (market_contract_address, _, _, token_contract_address, _, _, _) = deploy_contract();
+    let market_safe_dispatcher = IMarketSafeDispatcher {
+        contract_address: market_contract_address,
+    };
+
+    // Interact
+    start_cheat_caller_address(market_contract_address, TEST_USER_1);
+    match market_safe_dispatcher
+        .update_price_feed_address(token_contract_address, contract_address_const::<0>()) {
+        Result::Ok(_) => panic_with_felt252('Should have panicked'),
+        Result::Err(panic_data) => {
+            assert(*panic_data.at(0) == Error::NOT_OWNER, *panic_data.at(0))
+        },
+    }
+    stop_cheat_caller_address(market_contract_address);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_update_price_feed_address_revert_invalid_token_address() {
+    // Setup
+    let (market_contract_address, _, _, _, _, _, _) = deploy_contract();
+    let market_safe_dispatcher = IMarketSafeDispatcher {
+        contract_address: market_contract_address,
+    };
+
+    // Interact
+    start_cheat_caller_address(market_contract_address, TEST_OWNER);
+    match market_safe_dispatcher
+        .update_price_feed_address(contract_address_const::<0>(), contract_address_const::<0>()) {
+        Result::Ok(_) => panic_with_felt252('Should have panicked'),
+        Result::Err(panic_data) => {
+            assert(*panic_data.at(0) == Error::INVALID_TOKEN_ADDRESS, *panic_data.at(0))
         },
     }
     stop_cheat_caller_address(market_contract_address);
@@ -1914,7 +2003,7 @@ fn test_borrow_revert_exceeds_borrow_limit() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Increase total borrow
@@ -1995,7 +2084,7 @@ fn test_borrow_revert_unsecured_loan() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -2104,7 +2193,7 @@ fn test_borrow_revert_exceeds_borrow_limit_after_loan() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_2);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_2).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -2521,7 +2610,7 @@ fn test_repay_revert_invalid_borrow_id() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -2563,7 +2652,8 @@ fn test_repay_revert_invalid_borrow_id() {
     // Borrow
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
 
     // Cache data before
     let pool_address = match market_safe_dispatcher.get_pools(token, collateral_token) {
@@ -2626,7 +2716,7 @@ fn test_repay_revert_not_enough_balance_to_repay() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -2669,7 +2759,8 @@ fn test_repay_revert_not_enough_balance_to_repay() {
     let borrow_timestamp = get_block_timestamp();
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
 
     // Cache data before
     let pool_address = match market_safe_dispatcher.get_pools(token, collateral_token) {
@@ -2735,7 +2826,7 @@ fn test_repay_revert_not_enough_allowance() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -2778,7 +2869,8 @@ fn test_repay_revert_not_enough_allowance() {
     let borrow_timestamp = get_block_timestamp();
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
 
     // Cache data before
     let pool_address = match market_safe_dispatcher.get_pools(token, collateral_token) {
@@ -3271,7 +3363,7 @@ fn test_liquidate_revert_invalid_borrow_id() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -3313,7 +3405,8 @@ fn test_liquidate_revert_invalid_borrow_id() {
     // Borrow
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Cache data before
@@ -3378,7 +3471,7 @@ fn test_liquidate_revert_liquidate_not_allowed() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -3420,7 +3513,8 @@ fn test_liquidate_revert_liquidate_not_allowed() {
     // Borrow
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Cache data before
@@ -3503,7 +3597,7 @@ fn test_liquidate_revert_not_enough_balance_to_repay() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -3546,7 +3640,8 @@ fn test_liquidate_revert_not_enough_balance_to_repay() {
     let borrow_timestamp = get_block_timestamp();
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Re setup price feed
@@ -3626,7 +3721,7 @@ fn test_liquidate_revert_not_enough_allowance() {
 
     // Supply
     start_cheat_caller_address(market_contract_address, TEST_USER_1);
-    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1);
+    market_safe_dispatcher.supply(token, collateral_token, TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Mint mock collateral token
@@ -3669,7 +3764,8 @@ fn test_liquidate_revert_not_enough_allowance() {
     let borrow_timestamp = get_block_timestamp();
     start_cheat_caller_address(market_contract_address, TEST_USER_2);
     market_safe_dispatcher
-        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1);
+        .borrow(token, TEST_BORROW_AMOUNT_1, collateral_token, TEST_COLLATERAL_AMOUNT_1)
+        .unwrap();
     stop_cheat_caller_address(market_contract_address);
 
     // Re setup price feed

@@ -5,10 +5,10 @@ use snforge_std::{
     start_cheat_caller_address, stop_cheat_caller_address,
 };
 use starknet::storage::StoragePointerReadAccess;
-use starknet::{ClassHash, ContractAddress};
+use starknet::{ClassHash, ContractAddress, SyscallResultTrait};
 
 // Internal imports
-use starknet_lending::{
+use starknet_lending_sc::{
     errors::Error,
     interfaces::{
         ILPTokenDispatcher, ILPTokenDispatcherTrait, ILPTokenSafeDispatcher,
@@ -24,7 +24,7 @@ use super::test_constants::{
 
 fn deploy_lp_token_contract() -> ContractAddress {
     // Declare contract
-    let contract = declare("LPToken").unwrap().contract_class();
+    let contract = declare("LPToken").unwrap_syscall().contract_class();
 
     // Prepare LP token deploy data
     let lp_token_name: ByteArray = mock_lp_token_name();
@@ -41,7 +41,7 @@ fn deploy_lp_token_contract() -> ContractAddress {
     Serde::serialize(@deploy_data, ref calldata);
 
     // Deploy contract
-    let (contract_address, _) = contract.deploy(@calldata).unwrap();
+    let (contract_address, _) = contract.deploy(@calldata).unwrap_syscall();
 
     // Return
     contract_address
@@ -49,9 +49,9 @@ fn deploy_lp_token_contract() -> ContractAddress {
 
 fn deploy_pool_contract() -> ContractAddress {
     // Declare contract
-    let mock_erc20_token_contract = declare("MockERC20").unwrap().contract_class();
-    let lp_token_contract = declare("LPToken").unwrap().contract_class();
-    let pool_contract = declare("Pool").unwrap().contract_class();
+    let mock_erc20_token_contract = declare("MockERC20").unwrap_syscall().contract_class();
+    let lp_token_contract = declare("LPToken").unwrap_syscall().contract_class();
+    let pool_contract = declare("Pool").unwrap_syscall().contract_class();
 
     // Prepare pool deploy data
     let mock_erc20_token_name: ByteArray = mock_erc20_token_name();
@@ -66,10 +66,12 @@ fn deploy_pool_contract() -> ContractAddress {
     Serde::serialize(
         @mock_erc20_collateral_token_name, ref mock_erc20_collateral_token_deploy_data,
     );
-    let (_token, _) = mock_erc20_token_contract.deploy(@mock_erc20_token_deploy_data).unwrap();
+    let (_token, _) = mock_erc20_token_contract
+        .deploy(@mock_erc20_token_deploy_data)
+        .unwrap_syscall();
     let (_collateral_token, _) = mock_erc20_token_contract
         .deploy(@mock_erc20_collateral_token_deploy_data)
-        .unwrap();
+        .unwrap_syscall();
     let lp_token_class_hash: ClassHash = *lp_token_contract.class_hash;
     let _market_contract: ContractAddress = TEST_MARKET_CONTRACT;
     let mut pool_deploy_data = array![];
@@ -79,7 +81,7 @@ fn deploy_pool_contract() -> ContractAddress {
     Serde::serialize(@_market_contract, ref pool_deploy_data);
 
     // Deploy contract
-    let (contract_address, _) = pool_contract.deploy(@pool_deploy_data).unwrap();
+    let (contract_address, _) = pool_contract.deploy(@pool_deploy_data).unwrap_syscall();
 
     // Return
     contract_address

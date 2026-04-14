@@ -36,7 +36,7 @@ mod MockAggregator {
     use starknet::{ContractAddress, contract_address_const};
 
     // Internal imports
-    use starknet_lending::interfaces::{IAggregator, Round};
+    use starknet_lending_sc::interfaces::{IAggregator, Round};
     use super::{IMockAggregator, ITypeAndVersion, Transmission};
 
     // Event

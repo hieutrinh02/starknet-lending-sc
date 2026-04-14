@@ -68,6 +68,13 @@ pub trait IMarket<TContractState> {
         ref self: TContractState, token: ContractAddress, collateral_token: ContractAddress,
     );
 
+    /// Update price feed address
+    fn update_price_feed_address(
+        ref self: TContractState,
+        _chainlink_price_feed_token: ContractAddress,
+        _chainlink_price_feed_address: ContractAddress,
+    );
+
     /// Supplies liquidity to a pool and mints LP tokens
     fn supply(
         ref self: TContractState,

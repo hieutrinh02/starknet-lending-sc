@@ -7,10 +7,10 @@ use snforge_std::{
     start_cheat_caller_address, stop_cheat_caller_address,
 };
 use starknet::storage::StoragePointerReadAccess;
-use starknet::{ClassHash, ContractAddress, get_block_timestamp};
+use starknet::{ClassHash, ContractAddress, SyscallResultTrait, get_block_timestamp};
 
 // Internal imports
-use starknet_lending::{
+use starknet_lending_sc::{
     constants::{BASE_INTEREST_RATE, OPTIMAL_UTILIZATION_RATE, RSLOPE_1, RSLOPE_2, ten_pow_decimals},
     errors::Error,
     interfaces::{
@@ -29,9 +29,9 @@ use super::test_constants::{
 
 fn deploy_contract() -> (ContractAddress, ContractAddress, ContractAddress) {
     // Declare contract
-    let mock_erc20_token_contract = declare("MockERC20").unwrap().contract_class();
-    let lp_token_contract = declare("LPToken").unwrap().contract_class();
-    let pool_contract = declare("Pool").unwrap().contract_class();
+    let mock_erc20_token_contract = declare("MockERC20").unwrap_syscall().contract_class();
+    let lp_token_contract = declare("LPToken").unwrap_syscall().contract_class();
+    let pool_contract = declare("Pool").unwrap_syscall().contract_class();
 
     // Prepare pool deploy data
     let mock_erc20_token_name: ByteArray = mock_erc20_token_name();
@@ -46,10 +46,12 @@ fn deploy_contract() -> (ContractAddress, ContractAddress, ContractAddress) {
     Serde::serialize(
         @mock_erc20_collateral_token_name, ref mock_erc20_collateral_token_deploy_data,
     );
-    let (_token, _) = mock_erc20_token_contract.deploy(@mock_erc20_token_deploy_data).unwrap();
+    let (_token, _) = mock_erc20_token_contract
+        .deploy(@mock_erc20_token_deploy_data)
+        .unwrap_syscall();
     let (_collateral_token, _) = mock_erc20_token_contract
         .deploy(@mock_erc20_collateral_token_deploy_data)
-        .unwrap();
+        .unwrap_syscall();
     let lp_token_class_hash: ClassHash = *lp_token_contract.class_hash;
     let _market_contract: ContractAddress = TEST_MARKET_CONTRACT;
     let mut pool_deploy_data = array![];
@@ -59,7 +61,7 @@ fn deploy_contract() -> (ContractAddress, ContractAddress, ContractAddress) {
     Serde::serialize(@_market_contract, ref pool_deploy_data);
 
     // Deploy contract
-    let (pool_contract_address, _) = pool_contract.deploy(@pool_deploy_data).unwrap();
+    let (pool_contract_address, _) = pool_contract.deploy(@pool_deploy_data).unwrap_syscall();
 
     // Return
     (pool_contract_address, _token, _collateral_token)
@@ -304,7 +306,7 @@ fn test_subtract_user_lp_owned_revert_not_market_contract() {
     let (pool_contract_address, _, _) = deploy_contract();
     let pool_safe_dispatcher = IPoolSafeDispatcher { contract_address: pool_contract_address };
     start_cheat_caller_address(pool_contract_address, TEST_MARKET_CONTRACT);
-    pool_safe_dispatcher.add_user_lp_owned(TEST_USER_1, TEST_LP_AMOUNT);
+    pool_safe_dispatcher.add_user_lp_owned(TEST_USER_1, TEST_LP_AMOUNT).unwrap();
     stop_cheat_caller_address(pool_contract_address);
 
     // Interact
@@ -382,7 +384,7 @@ fn test_subtract_total_supply_revert_not_market_contract() {
     let (pool_contract_address, _, _) = deploy_contract();
     let pool_safe_dispatcher = IPoolSafeDispatcher { contract_address: pool_contract_address };
     start_cheat_caller_address(pool_contract_address, TEST_MARKET_CONTRACT);
-    pool_safe_dispatcher.add_total_supply(TEST_SUPPLY_AMOUNT_1);
+    pool_safe_dispatcher.add_total_supply(TEST_SUPPLY_AMOUNT_1).unwrap();
     stop_cheat_caller_address(pool_contract_address);
 
     // Interact
@@ -460,7 +462,7 @@ fn test_subtract_total_borrow_revert_not_market_contract() {
     let (pool_contract_address, _, _) = deploy_contract();
     let pool_safe_dispatcher = IPoolSafeDispatcher { contract_address: pool_contract_address };
     start_cheat_caller_address(pool_contract_address, TEST_MARKET_CONTRACT);
-    pool_safe_dispatcher.add_total_borrow(TEST_BORROW_AMOUNT_1);
+    pool_safe_dispatcher.add_total_borrow(TEST_BORROW_AMOUNT_1).unwrap();
     stop_cheat_caller_address(pool_contract_address);
 
     // Interact
@@ -611,7 +613,7 @@ fn test_remove_user_borrow_info_revert_not_market_contract() {
         borrow_start_time: get_block_timestamp(),
     };
     start_cheat_caller_address(pool_contract_address, TEST_MARKET_CONTRACT);
-    pool_safe_dispatcher.add_user_borrow_info(TEST_USER_1, user_borrow_info);
+    pool_safe_dispatcher.add_user_borrow_info(TEST_USER_1, user_borrow_info).unwrap();
     stop_cheat_caller_address(pool_contract_address);
 
     // Interact

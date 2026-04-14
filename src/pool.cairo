@@ -18,7 +18,7 @@ pub mod Pool {
     };
 
     // Internal imports
-    use starknet_lending::{
+    use starknet_lending_sc::{
         constants::{
             BASE_INTEREST_RATE, OPTIMAL_UTILIZATION_RATE, RSLOPE_1, RSLOPE_2, ten_pow_decimals,
         },

@@ -1,7 +1,7 @@
-<h1 align="center">Starknet Lending</h1>
+<h1 align="center">Starknet Lending Smart Contract</h1>
 
 <p align="center">
-  <a href="https://github.com/hieutrinh02/starknet-lending/blob/main/LICENSE">
+  <a href="https://github.com/hieutrinh02/starknet-lending-sc/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-green" />
   </a>
   <img src="https://img.shields.io/badge/status-educational-blue" />
@@ -14,7 +14,14 @@
 This repository contains a lending protocol implementation on Starknet,
 built to explore core lending mechanics, interest accrual, and liquidation logic.
 
-The focus of this project is smart contract correctness and security.
+The focus of this project is smart contract correctness and security. For read-side indexing and local UI interaction, see [`starknet-lending-indexer`](https://github.com/hieutrinh02/starknet-lending-indexer) and [`starknet-lending-fe`](https://github.com/hieutrinh02/starknet-lending-fe).
+
+## 🌐 Deployed Market Contract
+
+Starknet Sepolia
+
+- Address: `0x014fd1f73829520b97e00bbcdc4d5b3818503f8eaafd88e0ba7129a5d1d4fe9a`
+- Explorer: https://sepolia.voyager.online/contract/0x014fd1f73829520b97e00bbcdc4d5b3818503f8eaafd88e0ba7129a5d1d4fe9a
 
 ## 📄 High-level protocol design
 
@@ -46,6 +53,21 @@ The protocol is designed and tested against the following core invariants:
 - Borrow positions: A borrow position must be fully repaid or liquidated to be closed.
 - Collateral safety: Under-collateralized positions must be liquidatable.
 
+## 🧪 Test Coverage
+
+The codebase is extensively tested using:
+
+- Unit & integration tests for individual functions
+- Representative fuzz tests
+
+Total: **96 test cases**
+
+### Test Coverage
+
+<p align="center">
+  <img src="assets/coverage.png" alt="Test Coverage" width="800">
+</p>
+
 ## 🧰 Tech Stack
 
 - Blockchain: Starknet
@@ -54,7 +76,7 @@ The protocol is designed and tested against the following core invariants:
 - Testing & fuzzing: Starknet Foundry (snforge)
 - Oracle: Chainlink Price Feeds
 
-## 🛠 Installation & Testing
+## 🛠 Build, Test & Deploy
 
 Prerequisites
 
@@ -67,21 +89,33 @@ Clone the repo and from within the project's root folder run:
 snforge test
 ```
 
-The codebase is extensively tested using:
+### Deploy the contract
 
-- Unit & integration tests for individual functions
-- Representative fuzz tests
+1. You'll need to declare 3 contracts `LPToken`, `Pool` and `Market` to get their class hashes following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/declare.html
 
-### Test Coverage
+```bash
+sncast --account my_account declare --network sepolia --contract-name MyContract
+```
 
-<p align="center">
-  <img src="assets/coverage.png" alt="Test Coverage" width="800">
-</p>
+2. You'll deploy the `Market` contract using these parameters:
+- Admin wallet address
+- `Pool` contract class hash deployed at step 1
+- `LPToken` contract class hash deployed at step 1
+- List of initial token addresses configured for price feed
+- List of price feed addresses corresponds to the token addresses above
+following this instruction: https://foundry-rs.github.io/starknet-foundry/starknet/deploy.html
+
+```bash
+sncast --account my_account deploy --class-hash <market_class_hash> --arguments '<owner>, <pool_class_hash>, <lp_token_class_hash>, array![<first_token_address>, <second_token_address>, <third_token_address>].span(), array![<first_price_feed_address>, <second_price_feed_address>, <third_price_feed_address>].span()' --network sepolia
+```
+
+3. After deploying the `Market` contract, the admin must call `deploy_new_pool(token, collateral_token)` to create lending pools for the desired asset pairs.
+
+The token addresses passed to `deploy_new_pool` must already have their corresponding price feed addresses configured in the `Market` contract.
 
 ## ⚠️ Disclaimer
 
-This code is for educational purposes only, has not been audited,
-and is provided without any warranties or guarantees.
+This code is for educational purposes only, has not been audited, and is provided without any warranties or guarantees.
 
 ## 📜 License
 

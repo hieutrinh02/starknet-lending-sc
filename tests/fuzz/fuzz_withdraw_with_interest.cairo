@@ -10,7 +10,7 @@ use starknet::syscalls::call_contract_syscall;
 use starknet::{ContractAddress, SyscallResultTrait, get_block_timestamp};
 
 // Internal imports
-use starknet_lending::{
+use starknet_lending_sc::{
     constants::{YEAR_TIMESTAMPS, ten_pow_decimals},
     interfaces::{
         ILPTokenDispatcher, ILPTokenDispatcherTrait, IMarketDispatcher, IMarketDispatcherTrait,

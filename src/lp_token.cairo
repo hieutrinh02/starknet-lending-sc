@@ -7,7 +7,7 @@ pub mod LPToken {
     use starknet::{ContractAddress, get_caller_address};
 
     // Internal imports
-    use starknet_lending::{errors::Error, interfaces::{IPoolDispatcher, IPoolDispatcherTrait}};
+    use starknet_lending_sc::{errors::Error, interfaces::{IPoolDispatcher, IPoolDispatcherTrait}};
 
     // Component
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);

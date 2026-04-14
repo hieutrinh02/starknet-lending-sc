@@ -14,7 +14,7 @@ pub mod Market {
     };
 
     // Internal imports
-    use starknet_lending::{
+    use starknet_lending_sc::{
         constants::{
             BASE_INTEREST_RATE, BORROW_LIMIT, MIN_HF_WITH_DECIMALS, OPTIMAL_UTILIZATION_RATE,
             RSLOPE_1, RSLOPE_2, THRESHOLD_LIQUIDATION, UPPER_LIQUIDATE_HF_WITH_DECIMALS,
@@ -33,6 +33,7 @@ pub mod Market {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         NewPoolDeployed: NewPoolDeployed,
+        PriceFeedUpdated: PriceFeedUpdated,
         Supplied: Supplied,
         Withdrew: Withdrew,
         Borrowed: Borrowed,
@@ -47,6 +48,13 @@ pub mod Market {
         #[key]
         pub collateral_token: ContractAddress,
         pub pool_address: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct PriceFeedUpdated {
+        #[key]
+        pub token: ContractAddress,
+        pub feed_address: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -227,6 +235,36 @@ pub mod Market {
                 .emit(
                     Event::NewPoolDeployed(
                         NewPoolDeployed { token, collateral_token, pool_address: _pool_address },
+                    ),
+                );
+        }
+
+        // See IMarket-update_price_feed_address
+        fn update_price_feed_address(
+            ref self: ContractState,
+            _chainlink_price_feed_token: ContractAddress,
+            _chainlink_price_feed_address: ContractAddress,
+        ) {
+            // Check caller
+            assert(get_caller_address() == self.owner.read(), Error::NOT_OWNER);
+
+            // Check token
+            assert(_chainlink_price_feed_token.is_non_zero(), Error::INVALID_TOKEN_ADDRESS);
+
+            // Write to storage
+            self
+                .chainlink_price_feed_address
+                .entry(_chainlink_price_feed_token)
+                .write(_chainlink_price_feed_address);
+
+            // Emit event
+            self
+                .emit(
+                    Event::PriceFeedUpdated(
+                        PriceFeedUpdated {
+                            token: _chainlink_price_feed_token,
+                            feed_address: _chainlink_price_feed_address,
+                        },
                     ),
                 );
         }
@@ -453,7 +491,8 @@ pub mod Market {
                     * collateral_token_price_decimals.into());
 
             // Check the loan's HF
-            // The borrower needs to deposit at least 150% of collateral value equivalent to borrow value
+            // The borrower needs to deposit at least 150% of collateral value equivalent to borrow
+            // value
             assert(hf >= MIN_HF_WITH_DECIMALS.into(), Error::UNSECURED_LOAN);
 
             // Check utilization rate (UR) after loan, must <= 90%
